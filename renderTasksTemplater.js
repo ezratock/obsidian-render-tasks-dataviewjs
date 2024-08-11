@@ -1,4 +1,8 @@
-//If editing this file, use
+/*
+ *  Note to self:
+ *  Use ./git-update.sh to push to git!
+ */
+
 module.exports = async (tp) => {
     // Prompt for inputs
     console.log("ok but it wokred tho");
