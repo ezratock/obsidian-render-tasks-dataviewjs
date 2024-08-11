@@ -293,6 +293,7 @@ async function updateTask(notePath, task, updatedText, isChecked, priority, star
         }
         const updatedContent = lines.join('\n');
         //console.log(updatedContent);
+        const file = app.vault.getAbstractFileByPath(notePath);
         await app.vault.modify(file, updatedContent);
     } catch (error) {
         console.error(error);
