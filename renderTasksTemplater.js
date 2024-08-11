@@ -1,6 +1,7 @@
 /*
- *  Note to self:
- *  Use ./git-update.sh to push to git!
+ * Note to self:
+ * DON'T EDIT THIS FILE!
+ * Edit the symlink and use ./git-update.sh to push
  */
 
 module.exports = async (tp) => {
