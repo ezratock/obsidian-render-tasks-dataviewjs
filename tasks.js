@@ -1,14 +1,16 @@
 let NOTE_PATH = "testytestytesty";
-let RENDER_LEN = 1
+let RENDER_LEN = 1;
 let RENDER_INDEX = 0;
 let INDENT = 0;
 
 // if "set done date on every completed task" is enabled in the Tasks plugin. Hardcoded to default YYYY-MM-DD
 const COMPLETE_ENABLED = true;
 
-renderFile(NOTE_PATH, RENDER_LEN, RENDER_INDEX, INDENT);
+const linesCache = {};
 
-function renderFile(notePath, renderLen, renderIndex, indent) {
+await renderFile(NOTE_PATH, RENDER_LEN, RENDER_INDEX, INDENT);
+
+async function renderFile(notePath, renderLen, renderIndex, indent) {
     // find full path of NOTE_PATH
     notePath = dv.page(notePath).file.path;
 
@@ -16,17 +18,43 @@ function renderFile(notePath, renderLen, renderIndex, indent) {
     const page = dv.page(notePath);
     if (page) {
         //dv.header(3, page.file.name);
-        renderTasks(notePath, page.file.tasks, prioritiesShown, indent);
+        await renderTasks(notePath, page.file.tasks, prioritiesShown, indent);
     } else {
         pageNotFoundError(notePath);
     }
 }
 
+async function getLines(notePath) {
+    if (linesCache[notePath]) {
+        return linesCache[notePath];
+    }
+    const file = app.vault.getAbstractFileByPath(notePath);
+    if (!file) {
+        //TODO: BETTER ERROR CHECKING
+        console.error("ERROR: file " + file + " not found when reading lines");
+        return null;
+    }
+    const content = await app.vault.read(file);
+    let lines = content.split('\n');
+    linesCache[notePath] = lines;
+
+    return lines;
+}
+
 // Function to render tasks with indentation
-function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, indentLevel = 0) {
-    tasks.forEach(task => {
+async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, prevLine = 0, indentLevel = 0) {
+    let lines = await getLines(notePath);
+    for (const task of tasks) {
         if (!(task.parent && indentLevel === 0)) {
-            if (hasPriorityChild(task, acceptedPriorities) || hasPriorityParent(notePath, task, acceptedPriorities)) {
+            const linesToCheck = lines.slice(prevLine, task.line);
+            const textToCheck = linesToCheck.join('\n');
+            const renderRegex = /```dataviewjs\nlet\sNOTE_PATH\s*=\s*"([^;\n"']+)"\s*;?\s*\nlet\sRENDER_LEN\s*=\s*(\d+)\s*;?\s*\nlet\sRENDER_INDEX\s*=\s*(\d+)\s*;?\s*\nlet\sINDENT\s*=\s*(\d+)\s*;?\s*\n(?:[\s\S]*?)\n```/;
+            const match = textToCheck.match(renderRegex);
+            if (match) {
+                await renderFile(match[1], parseInt(match[2], 10), parseInt(match[3], 10), parseInt(match[4], 10) + extraIndent);
+            }
+            prevLine = task.line;
+            if (hasPriorityChild(task, acceptedPriorities) || await hasPriorityParent(notePath, task, acceptedPriorities)) {
                 // Create a container for the task elements
                 const taskContainer = document.createElement('div');
                 taskContainer.style.display = 'flex'; // Use flexbox layout
@@ -97,10 +125,10 @@ function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, indentLev
 
             // Recursively render subtasks with increased indentation
             if (task.subtasks) {
-                renderTasks(notePath, task.subtasks, acceptedPriorities, extraIndent, indentLevel + 1);
+                await renderTasks(notePath, task.subtasks, acceptedPriorities, extraIndent, prevLine, indentLevel + 1);
             }
         }
-    });
+    }
 }
 
 // Function to parse task text and convert links
@@ -144,34 +172,36 @@ function hasPriorityChild(task, emojis) {
     return false;
 }
 
-function hasPriorityParent(notePath, task, emojis) {
-    let debug = false;
+async function hasPriorityParent(notePath, task, emojis) {
     for (e in emojis) {
         if (task && task.text && task.text.includes(emojis[e])) {
             return true;
         }
     }
     if (task && task.parent >= 0) {
-        return hasPriorityParent(notePath, getNthLine(notePath, task.parent), emojis);
+        return await hasPriorityParent(notePath, await getNthLineAsTask(notePath, task.parent), emojis);
     }
     return false;
 }
 
-function getNthLine(notePath, n) {
-    let parent = null;
+async function getNthLineAsTask(notePath, n) {
+    const lines = await getLines(notePath);
+    const nthParse = parseTask(lines[n]);
+
+    let rtrn = null;
     const currPage = dv.page(notePath);
     if (currPage) {
         //starting at -1 because 0 index is after 1 lines
-        let lineCount = -1;
         let found = false;
+        let parse;
         currPage.file.tasks.forEach(t => {
-            lineCount += t.lineCount;
-            if (!found && lineCount === n) {
-                parent = t;
+            parse = parseTask("- [ ] " + t.text);
+            if (!found && parse.text === nthParse.text && parse.priority === nthParse.priority && parse.startDate === nthParse.startDate && parse.dueDate === nthParse.dueDate) {
+                rtrn = t;
                 found = true;
             }
         });
-        return parent;
+        return rtrn;
     } else {
         pageNotFoundError();
     }
@@ -217,7 +247,7 @@ function unparseTask(indent, checked, text, priority, startDate, dueDate) {
     return "\t".repeat(indent) + (checked ? "- [x] " : "- [ ] ") + text + (priority ? " " + priority : '') + (startDate ? " 🛫 " + startDate : '') + (dueDate ? " 📅 " + dueDate : '');
 }
 
-function taskEq(currLines, notePath, currParse, targetTask, expectedIndent) {
+async function taskEq(currLines, notePath, currParse, targetTask, expectedIndent) {
     let targetParse = parseTask("- [ ] " + targetTask.text);
     if (currParse && currParse.indent === expectedIndent && targetParse.text === currParse.text && targetParse.dueDate === currParse.dueDate && targetParse.startDate === currParse.startDate && targetParse.priority === currParse.priority) {
         if (!targetTask.parent) {
@@ -227,7 +257,7 @@ function taskEq(currLines, notePath, currParse, targetTask, expectedIndent) {
                 for (let i = targetTask.line; i >= 0; i--) {
                     let p = parseTask(currLines[i]);
                     if (p && p.indent === expectedIndent - 1) {
-                        return taskEq(currLines, notePath, p, getNthLine(notePath, targetTask.parent), expectedIndent - 1);
+                        return await taskEq(currLines, notePath, p, await getNthLineAsTask(notePath, targetTask.parent), expectedIndent - 1);
                     }
                 }
             }
@@ -236,25 +266,13 @@ function taskEq(currLines, notePath, currParse, targetTask, expectedIndent) {
     return false;
 }
 
-async function getLines(file) {
-    if (!file) {
-        //TODO: BETTER ERROR CHECKING
-        console.error("ERROR: file " + file + " not found when reading lines");
-        return null;
-    }
-    const content = await app.vault.read(file);
-    let lines = content.split('\n');
-    return lines;
-}
-
 async function updateTask(notePath, task, updatedText, isChecked, priority, startDate, dueDate) {
-    const file = app.vault.getAbstractFileByPath(notePath);
-    let lines = await getLines(file);
+    let lines = await getLines(notePath);
     let t;
     try {
         for (let l in lines) {
             t = parseTask(lines[l]);
-            if (t && task && taskEq(lines, notePath, t, task, t.indent)) {
+            if (t && task && await taskEq(lines, notePath, t, task, t.indent)) {
                 if (updatedText === null) {
                     updatedText = t.text
                 }
