@@ -1,30 +1,24 @@
 let NOTE_PATH = "testytestytesty";
 let RENDER_LEN = 1;
-let RENDER_INDEX = 0;
+let RENDER_INDEX = 1;
 let INDENT = 0;
 
 // if "set done date on every completed task" is enabled in the Tasks plugin. Hardcoded to default YYYY-MM-DD
 const COMPLETE_ENABLED = true;
+const VALID_PRIORITIES = ['🔺', '⏫', '🔼', '🔽', '⏬️', ''];
 
 const linesCache = {};
-const eventListeners = [];
 
 await renderFile(NOTE_PATH, RENDER_LEN, RENDER_INDEX, INDENT);
 
-function update() {
-    removeAllEventListeners();
-    dv.container.innerHTML = '';
-    renderFile(NOTE_PATH, RENDER_LEN, RENDER_INDEX, INDENT);
-}
-
-async function renderFile(notePath, renderLen, renderIndex, indent) {
+async function renderFile(notePath, renderLen, renderIndex, indent, masterClickedOverride = false) {
     // find full path of NOTE_PATH
     notePath = dv.page(notePath).file.path;
 
-    let prioritiesShown = new Array('🔼');
+    let prioritiesShown = splitArray(VALID_PRIORITIES, renderLen)[renderIndex-1];
     const page = dv.page(notePath);
     if (page) {
-        const masterClicked = getMasterClicked(notePath, renderIndex);
+        const masterClicked = getMasterClicked(notePath, renderIndex) || masterClickedOverride;
         let clickListener = (e) => {
             setMasterClicked(notePath, renderIndex, e.target.checked);
             update();
@@ -45,9 +39,38 @@ async function renderFile(notePath, renderLen, renderIndex, indent) {
     }
 }
 
+function splitArray(array, n) {
+    if (n < 1 || n > 3) {
+        throw new Error('Invalid number of parts');
+    }
+
+    // Calculate the size of each part
+    const partSize = Math.ceil(array.length / n);
+    const result = [];
+
+    for (let i = 0; i < n; i++) {
+        const start = i * partSize;
+        const end = Math.min(start + partSize, array.length);
+        result.push(array.slice(start, end));
+    }
+
+    return result;
+}
+
+function update() {
+    // Throws strange error.
+    //
+    // Uncaught RangeError: Trying to find position for a DOM position outside of the document
+    //     at t.posFromDOM (app.js:1:360144)
+    //     at e.posAtDOM (app.js:1:452533)
+    //     at Dh.handleClickEvent (plugin:obsidian-tasks-plugin:315:277)
+    dv.container.innerHTML = '';
+    renderFile(NOTE_PATH, RENDER_LEN, RENDER_INDEX, INDENT);
+}
+
 function getKey(notePath, renderIndex) {
     const renderNotePath = dv.page(NOTE_PATH).file.path;
-    return dv.current().file.path + ":" + notePath + ":" + renderIndex + (notePath === renderNotePath && renderIndex === RENDER_INDEX ? "" : ":" + renderNotePath + ":" + RENDER_INDEX);
+    return dv.current().file.path + ":" + NOTE_PATH + ":" + renderIndex + (notePath === renderNotePath && renderIndex === RENDER_INDEX ? "" : ":" + renderNotePath + ":" + RENDER_INDEX);
 }
 
 function setMasterClicked(notePath, renderIndex, clicked) {
@@ -62,22 +85,6 @@ function getMasterClicked(notePath, renderIndex) {
     const fileCache = JSON.parse(localStorage.getItem('masterClickedCache')) || {};
 
     return fileCache[getKey(notePath, renderIndex)] || false;
-}
-
-// Function to add an event listener and track it
-function addEventListener(element, event, handler) {
-    element.addEventListener(event, handler);
-    // Store the reference to the listener
-    eventListeners.push({ element, event, handler });
-}
-
-// Function to remove all tracked event listeners
-function removeAllEventListeners() {
-    eventListeners.forEach(({ element, event, handler }) => {
-        element.removeEventListener(event, handler);
-    });
-    // Clear the cache
-    eventListeners.length = 0;
 }
 
 async function getLines(notePath) {
@@ -107,7 +114,7 @@ async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, mas
             const renderRegex = /```dataviewjs\nlet\sNOTE_PATH\s*=\s*"([^;\n"']+)"\s*;?\s*\nlet\sRENDER_LEN\s*=\s*(\d+)\s*;?\s*\nlet\sRENDER_INDEX\s*=\s*(\d+)\s*;?\s*\nlet\sINDENT\s*=\s*(\d+)\s*;?\s*\n(?:[\s\S]*?)\n```/;
             const match = textToCheck.match(renderRegex);
             if (match) {
-                await renderFile(match[1], parseInt(match[2], 10), parseInt(match[3], 10), parseInt(match[4], 10) + extraIndent);
+                await renderFile(match[1], parseInt(match[2], 10), parseInt(match[3], 10), parseInt(match[4], 10) + extraIndent, masterClicked);
             }
             prevLine = task.line;
             if (hasPriorityChild(task, acceptedPriorities) || await hasPriorityParent(notePath, task, acceptedPriorities)) {
@@ -123,7 +130,7 @@ async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, mas
                 editButton.style.marginLeft = '4px';
                 editButton.style.userSelect = 'none';
 
-                addEventListener(editButton, 'click', () => {
+                editButton.addEventListener('click', () => {
                     createInputDialog(notePath, task);
                 });
                 containers.textContainer.appendChild(editButton);
@@ -173,7 +180,7 @@ function renderTask(text, indent, clickListener, completed, masterClicked=false)
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = completed;
-    addEventListener(checkbox, 'click', clickListener);
+    checkbox.addEventListener('click', clickListener);
     checkbox.style.marginTop = '4px';
     taskContainer.appendChild(checkbox);
 
@@ -513,11 +520,11 @@ function createInputDialog(notePath, task) {
     saveButton.style.backgroundColor = "#8a5cf4";
 
     // Change button color on hover
-    addEventListener(saveButton, 'mouseover', () => {
+    saveButton.addEventListener('mouseover', () => {
         saveButton.style.backgroundColor = '#a68af9'; // Change color to green on hover
     });
 
-    addEventListener(saveButton, 'mouseout', () => {
+    saveButton.addEventListener('mouseout', () => {
         saveButton.style.backgroundColor = '#8a5cf4'; // Revert to default color
     });
 
@@ -556,11 +563,11 @@ function createInputDialog(notePath, task) {
         document.body.removeChild(dialog);
     };
 
-    addEventListener(saveButton, 'click', saveTask);
-    addEventListener(cancelButton, 'click', cancelDialog);
+    saveButton.addEventListener('click', saveTask);
+    cancelButton.addEventListener('click', cancelDialog);
 
     // Add keydown event listener for keyboard shortcuts
-    addEventListener(dialog, 'keydown', (event) => {
+    dialog.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
             saveTask();
         } else if (event.key === 'Escape') {
