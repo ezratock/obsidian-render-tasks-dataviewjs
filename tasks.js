@@ -7,8 +7,15 @@ let INDENT = 0;
 const COMPLETE_ENABLED = true;
 
 const linesCache = {};
+const eventListeners = [];
 
 await renderFile(NOTE_PATH, RENDER_LEN, RENDER_INDEX, INDENT);
+
+function update() {
+    removeAllEventListeners();
+    dv.container.innerHTML = '';
+    renderFile(NOTE_PATH, RENDER_LEN, RENDER_INDEX, INDENT);
+}
 
 async function renderFile(notePath, renderLen, renderIndex, indent) {
     // find full path of NOTE_PATH
@@ -17,11 +24,60 @@ async function renderFile(notePath, renderLen, renderIndex, indent) {
     let prioritiesShown = new Array('🔼');
     const page = dv.page(notePath);
     if (page) {
-        //dv.header(3, page.file.name);
-        await renderTasks(notePath, page.file.tasks, prioritiesShown, indent);
+        const masterClicked = getMasterClicked(notePath, renderIndex);
+        let clickListener = (e) => {
+            setMasterClicked(notePath, renderIndex, e.target.checked);
+            update();
+        }
+        const name = `<a href="${notePath}" class="internal-link">${page.file.name}</a>`;
+        const containers = renderTask(name, indent, clickListener, masterClicked, masterClicked);
+        containers.taskContainer.appendChild(containers.textContainer);
+        dv.container.appendChild(containers.taskContainer);
+        await renderTasks(notePath, page.file.tasks, prioritiesShown, indent + 1, masterClicked);
     } else {
+        let clickListener = (e) => {
+
+        }
+        renderTask(`ERROR: FILE \"${NOTE_PATH}\" NOT FOUND`, indent, clickListener, false);
+        containers.taskContainer.appendChild(containers.textContainer);
+        dv.container.appendChild(containers.taskContainer);
         pageNotFoundError(notePath);
     }
+}
+
+function getKey(notePath, renderIndex) {
+    const renderNotePath = dv.page(NOTE_PATH).file.path;
+    return dv.current().file.path + ":" + notePath + ":" + renderIndex + (notePath === renderNotePath && renderIndex === RENDER_INDEX ? "" : ":" + renderNotePath + ":" + RENDER_INDEX);
+}
+
+function setMasterClicked(notePath, renderIndex, clicked) {
+    const fileCache = JSON.parse(localStorage.getItem('masterClickedCache')) || {};
+
+    fileCache[getKey(notePath, renderIndex)] = clicked;
+
+    localStorage.setItem('masterClickedCache', JSON.stringify(fileCache));
+}
+
+function getMasterClicked(notePath, renderIndex) {
+    const fileCache = JSON.parse(localStorage.getItem('masterClickedCache')) || {};
+
+    return fileCache[getKey(notePath, renderIndex)] || false;
+}
+
+// Function to add an event listener and track it
+function addEventListener(element, event, handler) {
+    element.addEventListener(event, handler);
+    // Store the reference to the listener
+    eventListeners.push({ element, event, handler });
+}
+
+// Function to remove all tracked event listeners
+function removeAllEventListeners() {
+    eventListeners.forEach(({ element, event, handler }) => {
+        element.removeEventListener(event, handler);
+    });
+    // Clear the cache
+    eventListeners.length = 0;
 }
 
 async function getLines(notePath) {
@@ -42,7 +98,7 @@ async function getLines(notePath) {
 }
 
 // Function to render tasks with indentation
-async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, prevLine = 0, indentLevel = 0) {
+async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, masterClicked, prevLine = 0, indentLevel = 0) {
     let lines = await getLines(notePath);
     for (const task of tasks) {
         if (!(task.parent && indentLevel === 0)) {
@@ -55,53 +111,11 @@ async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, pre
             }
             prevLine = task.line;
             if (hasPriorityChild(task, acceptedPriorities) || await hasPriorityParent(notePath, task, acceptedPriorities)) {
-                // Create a container for the task elements
-                const taskContainer = document.createElement('div');
-                taskContainer.style.display = 'flex'; // Use flexbox layout
-                taskContainer.style.position = 'relative';
-                taskContainer.style.alignItems = 'flex-start';
-
-                // Create an indentation prefix based on the task level
-                const indentSpan = document.createElement('span');
-                //indentSpan.innerHTML = '&nbsp;'.repeat(((indentLevel + extraIndent) * 8) + 2); // Adjust the multiplier for more/less space
-                indentSpan.style.paddingLeft = `${(indentLevel + extraIndent) * 36 + 7.3}px`;
-                indentSpan.style.flex = '0 0 auto'; // Prevent flex item from growing/shrinking
-                taskContainer.appendChild(indentSpan);
-
-                for (let i = 0; i < indentLevel + extraIndent; i++) {
-                    const lineDiv = document.createElement('div');
-                    lineDiv.style.position = 'absolute'; // Position absolutely within the container
-                    lineDiv.style.left = `${14.5 + i * 36.1}px`; // Position the line based on the index
-                    lineDiv.style.top = '0'; // Start at the top of the container
-                    lineDiv.style.bottom = '0'; // Extend to the bottom of the container
-                    lineDiv.style.width = '0.5px'; // Width of the vertical line
-                    lineDiv.style.backgroundColor = '#393939'; // Color of the vertical line
-                    lineDiv.style.marginRight = '4px'; // Space between lines
-                    taskContainer.appendChild(lineDiv);
-                }
-
-                // Create and append the checkbox
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.checked = task.completed;
-                checkbox.addEventListener('click', (e) => {
+                const clickListener = (e) => {
                     const parse = parseTask("- [ ] " + task.text)
                     updateTask(notePath, task, null, e.target.checked, parse.priority, parse.startDate, parse.dueDate);
-                });
-                checkbox.style.marginTop = '4px';
-                taskContainer.appendChild(checkbox);
-
-                const textContainer = document.createElement('div');
-
-                // Create and append the label with indentation
-                const label = document.createElement('label');
-                label.innerHTML = parseTaskText(task.text);
-                if (checkbox.checked) {
-                    label.style.textDecoration = 'line-through';
-                    label.style.color = '#aaa';
-                }
-
-                textContainer.appendChild(label);
+                };
+                const containers = renderTask(task.text, indentLevel + extraIndent, clickListener, task.completed, masterClicked);
 
                 const editButton = document.createElement('span');
                 editButton.textContent = '📝';
@@ -109,26 +123,73 @@ async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, pre
                 editButton.style.marginLeft = '4px';
                 editButton.style.userSelect = 'none';
 
-                editButton.addEventListener('click', () => {
-                    createInputDialog(notePath, task, (newText) => {
-                        console.log('complete');
-                    })
+                addEventListener(editButton, 'click', () => {
+                    createInputDialog(notePath, task);
                 });
-                textContainer.appendChild(editButton);
+                containers.textContainer.appendChild(editButton);
 
-                taskContainer.appendChild(textContainer);
+                containers.taskContainer.appendChild(containers.textContainer);
 
                 // Append the task container to the main container
-                dv.container.appendChild(taskContainer);
+                dv.container.appendChild(containers.taskContainer);
                 //wrapper.appendChild(taskContainer);
             }
 
             // Recursively render subtasks with increased indentation
             if (task.subtasks) {
-                await renderTasks(notePath, task.subtasks, acceptedPriorities, extraIndent, prevLine, indentLevel + 1);
+                await renderTasks(notePath, task.subtasks, acceptedPriorities, extraIndent, masterClicked, prevLine, indentLevel + 1);
             }
         }
     }
+}
+
+function renderTask(text, indent, clickListener, completed, masterClicked=false) {
+    // Create a container for the task elements
+    const taskContainer = document.createElement('div');
+    taskContainer.style.display = 'flex'; // Use flexbox layout
+    taskContainer.style.position = 'relative';
+    taskContainer.style.alignItems = 'flex-start';
+
+    // Create an indentation prefix based on the task level
+    const indentSpan = document.createElement('span');
+    //indentSpan.innerHTML = '&nbsp;'.repeat(((indentLevel + extraIndent) * 8) + 2); // Adjust the multiplier for more/less space
+    indentSpan.style.paddingLeft = `${(indent) * 36 + 7.3}px`;
+    indentSpan.style.flex = '0 0 auto'; // Prevent flex item from growing/shrinking
+    taskContainer.appendChild(indentSpan);
+
+    for (let i = 0; i < indent; i++) {
+        const lineDiv = document.createElement('div');
+        lineDiv.style.position = 'absolute'; // Position absolutely within the container
+        lineDiv.style.left = `${14.5 + i * 36.1}px`; // Position the line based on the index
+        lineDiv.style.top = '0'; // Start at the top of the container
+        lineDiv.style.bottom = '0'; // Extend to the bottom of the container
+        lineDiv.style.width = '0.5px'; // Width of the vertical line
+        lineDiv.style.backgroundColor = '#393939'; // Color of the vertical line
+        lineDiv.style.marginRight = '4px'; // Space between lines
+        taskContainer.appendChild(lineDiv);
+    }
+
+    // Create and append the checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = completed;
+    addEventListener(checkbox, 'click', clickListener);
+    checkbox.style.marginTop = '4px';
+    taskContainer.appendChild(checkbox);
+
+    const textContainer = document.createElement('div');
+
+    // Create and append the label with indentation
+    const label = document.createElement('label');
+    label.innerHTML = parseTaskText(text);
+    if (checkbox.checked || masterClicked) {
+        label.style.textDecoration = 'line-through';
+        label.style.color = '#aaa';
+    }
+
+    textContainer.appendChild(label);
+
+    return {textContainer, taskContainer};
 }
 
 // Function to parse task text and convert links
@@ -300,7 +361,7 @@ async function updateTask(notePath, task, updatedText, isChecked, priority, star
     }
 }
 
-function createInputDialog(notePath, task, label) {
+function createInputDialog(notePath, task) {
     // Create dialog container
     const dialog = document.createElement('div');
     dialog.style.position = 'fixed';
@@ -452,11 +513,11 @@ function createInputDialog(notePath, task, label) {
     saveButton.style.backgroundColor = "#8a5cf4";
 
     // Change button color on hover
-    saveButton.addEventListener('mouseover', () => {
+    addEventListener(saveButton, 'mouseover', () => {
         saveButton.style.backgroundColor = '#a68af9'; // Change color to green on hover
     });
 
-    saveButton.addEventListener('mouseout', () => {
+    addEventListener(saveButton, 'mouseout', () => {
         saveButton.style.backgroundColor = '#8a5cf4'; // Revert to default color
     });
 
@@ -495,11 +556,11 @@ function createInputDialog(notePath, task, label) {
         document.body.removeChild(dialog);
     };
 
-    saveButton.addEventListener('click', saveTask);
-    cancelButton.addEventListener('click', cancelDialog);
+    addEventListener(saveButton, 'click', saveTask);
+    addEventListener(cancelButton, 'click', cancelDialog);
 
     // Add keydown event listener for keyboard shortcuts
-    dialog.addEventListener('keydown', (event) => {
+    addEventListener(dialog, 'keydown', (event) => {
         if (event.key === 'Enter') {
             saveTask();
         } else if (event.key === 'Escape') {
