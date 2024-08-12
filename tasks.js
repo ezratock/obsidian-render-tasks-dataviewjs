@@ -1,7 +1,8 @@
-let NOTE_PATH = "testytestytesty";
-let RENDER_LEN = 1;
-let RENDER_INDEX = 1;
-let INDENT = 0;
+
+// let NOTE_PATH = "testytestytesty";
+// let RENDER_LEN = 1;
+// let RENDER_INDEX = 1;
+// let INDENT = 0;
 
 // if "set done date on every completed task" is enabled in the Tasks plugin. Hardcoded to default YYYY-MM-DD
 const COMPLETE_ENABLED = true;
