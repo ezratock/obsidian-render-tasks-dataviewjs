@@ -1,5 +1,5 @@
 
-// let NOTE_PATH = "testytestytesty";
+// let NOTE_PATH = "test";
 // let RENDER_LEN = 1;
 // let RENDER_INDEX = 1;
 // let INDENT = 0;
@@ -115,7 +115,8 @@ async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, mas
             const renderRegex = /```dataviewjs\nlet\sNOTE_PATH\s*=\s*"([^;\n"']+)"\s*;?\s*\nlet\sRENDER_LEN\s*=\s*(\d+)\s*;?\s*\nlet\sRENDER_INDEX\s*=\s*(\d+)\s*;?\s*\nlet\sINDENT\s*=\s*(\d+)\s*;?\s*\n(?:[\s\S]*?)\n```/;
             const match = textToCheck.match(renderRegex);
             if (match) {
-                await renderFile(match[1], parseInt(match[2], 10), parseInt(match[3], 10), parseInt(match[4], 10) + extraIndent, masterClicked);
+                // await renderFile(match[1], parseInt(match[2], 10), parseInt(match[3], 10), parseInt(match[4], 10) + extraIndent, masterClicked);
+                await renderFile(match[1], RENDER_LEN, RENDER_INDEX, parseInt(match[4], 10) + extraIndent, masterClicked);
             }
             prevLine = task.line;
             if (hasPriorityChild(task, acceptedPriorities) || await hasPriorityParent(notePath, task, acceptedPriorities)) {
