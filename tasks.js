@@ -20,8 +20,8 @@ async function renderFile(notePath, renderLen, renderIndex, indent, masterClicke
     const page = dv.page(notePath);
     if (page) {
         const masterClicked = getMasterClicked(notePath, renderIndex) || masterClickedOverride;
-        let clickListener = (e) => {
-            setMasterClicked(notePath, renderIndex, e.target.checked);
+        let clickListener = (event) => {
+            setMasterClicked(notePath, renderIndex, event.target.checked);
             update();
         }
         const name = `<a href="${notePath}" class="internal-link">${page.file.name}</a>`;
@@ -30,7 +30,7 @@ async function renderFile(notePath, renderLen, renderIndex, indent, masterClicke
         dv.container.appendChild(containers.taskContainer);
         await renderTasks(notePath, page.file.tasks, prioritiesShown, indent + 1, masterClicked);
     } else {
-        let clickListener = (e) => {
+        let clickListener = (event) => {
 
         }
         renderTask(`ERROR: FILE \"${NOTE_PATH}\" NOT FOUND`, indent, clickListener, false);
@@ -59,12 +59,6 @@ function splitArray(array, n) {
 }
 
 function update() {
-    // Throws strange error.
-    //
-    // Uncaught RangeError: Trying to find position for a DOM position outside of the document
-    //     at t.posFromDOM (app.js:1:360144)
-    //     at e.posAtDOM (app.js:1:452533)
-    //     at Dh.handleClickEvent (plugin:obsidian-tasks-plugin:315:277)
     dv.container.innerHTML = '';
     renderFile(NOTE_PATH, RENDER_LEN, RENDER_INDEX, INDENT);
 }
@@ -120,9 +114,9 @@ async function renderTasks(notePath, tasks, acceptedPriorities, extraIndent, mas
             }
             prevLine = task.line;
             if (hasPriorityChild(task, acceptedPriorities) || await hasPriorityParent(notePath, task, acceptedPriorities)) {
-                const clickListener = (e) => {
+                const clickListener = (event) => {
                     const parse = parseTask("- [ ] " + task.text)
-                    updateTask(notePath, task, null, e.target.checked, parse.priority, parse.startDate, parse.dueDate);
+                    updateTask(notePath, task, null, event.target.checked, parse.priority, parse.startDate, parse.dueDate);
                 };
                 const containers = renderTask(task.text, indentLevel + extraIndent, clickListener, task.completed, masterClicked);
 
@@ -227,14 +221,14 @@ function hasPriorityChild(task, emojis) {
     if (task === null) {
         return false;
     }
-    for (e in emojis) {
+    for (let e in emojis) {
         if (task.text && task.text.includes(emojis[e])) {
             return true;
         }
     }
     if (task.subtasks && task.subtasks.length > 0) {
         let result = false;
-        for (t in task.subtasks) {
+        for (let t in task.subtasks) {
             result = result || hasPriorityChild(task.subtasks[t], emojis);
         }
         return result;
@@ -243,7 +237,7 @@ function hasPriorityChild(task, emojis) {
 }
 
 async function hasPriorityParent(notePath, task, emojis) {
-    for (e in emojis) {
+    for (let e in emojis) {
         if (task && task.text && task.text.includes(emojis[e])) {
             return true;
         }
